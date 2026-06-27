@@ -29,6 +29,7 @@ import (
 	xaiauth "github.com/router-for-me/CLIProxyAPI/v7/internal/auth/xai"
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/config"
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/misc"
+	"github.com/router-for-me/CLIProxyAPI/v7/internal/opencodegoquota"
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/pluginhost"
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/registry"
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/util"
@@ -414,6 +415,31 @@ func (h *Handler) listAuthFilesFromDisk(c *gin.Context) {
 				emailValue := gjson.GetBytes(data, "email").String()
 				fileData["type"] = typeValue
 				fileData["email"] = emailValue
+				if strings.EqualFold(strings.TrimSpace(typeValue), opencodegoquota.ProviderType) {
+					fileData["credential_name"] = strings.TrimSpace(gjson.GetBytes(data, "name").String())
+					fileData["display_name"] = fileData["credential_name"]
+					fileData["workspace_id"] = strings.TrimSpace(gjson.GetBytes(data, "workspace_id").String())
+					masked := opencodegoquota.MaskOpenCodeGoCookie(gjson.GetBytes(data, "auth_cookie").String())
+					if masked != "" {
+						fileData["auth_cookie"] = masked
+						fileData["masked_auth_cookie"] = masked
+					}
+					fileData["show_rolling"] = true
+					if showRolling := gjson.GetBytes(data, "show_rolling"); showRolling.Exists() {
+						fileData["show_rolling"] = showRolling.Bool()
+					}
+					fileData["show_weekly"] = true
+					if showWeekly := gjson.GetBytes(data, "show_weekly"); showWeekly.Exists() {
+						fileData["show_weekly"] = showWeekly.Bool()
+					}
+					fileData["show_monthly"] = true
+					if showMonthly := gjson.GetBytes(data, "show_monthly"); showMonthly.Exists() {
+						fileData["show_monthly"] = showMonthly.Bool()
+					}
+					if interval := gjson.GetBytes(data, "refresh_interval_sec"); interval.Exists() {
+						fileData["refresh_interval_sec"] = interval.Int()
+					}
+				}
 				if projectID := strings.TrimSpace(gjson.GetBytes(data, "project_id").String()); projectID != "" {
 					fileData["project_id"] = projectID
 				}
@@ -566,6 +592,21 @@ func (h *Handler) buildAuthFileEntry(auth *coreauth.Auth) gin.H {
 	}
 	if websockets, ok := authWebsocketsValue(auth); ok {
 		entry["websockets"] = websockets
+	}
+	if isOpenCodeGoAuth(auth) {
+		cred := h.publicOpenCodeGoCredential(auth)
+		entry["opencode_go"] = cred
+		entry["credential_name"] = cred.Name
+		entry["display_name"] = cred.Name
+		entry["workspace_id"] = cred.WorkspaceID
+		if cred.MaskedAuthCookie != "" {
+			entry["auth_cookie"] = cred.MaskedAuthCookie
+			entry["masked_auth_cookie"] = cred.MaskedAuthCookie
+		}
+		entry["show_rolling"] = cred.ShowRolling
+		entry["show_weekly"] = cred.ShowWeekly
+		entry["show_monthly"] = cred.ShowMonthly
+		entry["refresh_interval_sec"] = cred.RefreshIntervalSec
 	}
 	return entry
 }
@@ -728,8 +769,31 @@ func (h *Handler) DownloadAuthFile(c *gin.Context) {
 		}
 		return
 	}
+	data = sanitizeOpenCodeGoAuthFileDownload(data)
 	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", name))
 	c.Data(200, "application/json", data)
+}
+
+func sanitizeOpenCodeGoAuthFileDownload(data []byte) []byte {
+	if !strings.EqualFold(strings.TrimSpace(gjson.GetBytes(data, "type").String()), opencodegoquota.ProviderType) {
+		return data
+	}
+	var metadata map[string]any
+	if err := json.Unmarshal(data, &metadata); err != nil {
+		return data
+	}
+	rawCookie, _ := metadata["auth_cookie"].(string)
+	if masked := opencodegoquota.MaskOpenCodeGoCookie(rawCookie); masked != "" {
+		metadata["auth_cookie"] = masked
+		metadata["masked_auth_cookie"] = masked
+	} else {
+		delete(metadata, "auth_cookie")
+	}
+	sanitized, errMarshal := json.Marshal(metadata)
+	if errMarshal != nil {
+		return data
+	}
+	return sanitized
 }
 
 // Upload auth file: multipart or raw JSON with ?name=
@@ -1168,6 +1232,10 @@ func (h *Handler) buildAuthFromFileData(path string, data []byte) (*coreauth.Aut
 	label := provider
 	if email, ok := metadata["email"].(string); ok && email != "" {
 		label = email
+	} else if strings.EqualFold(strings.TrimSpace(provider), opencodegoquota.ProviderType) {
+		if name, ok := metadata["name"].(string); ok && strings.TrimSpace(name) != "" {
+			label = strings.TrimSpace(name)
+		}
 	}
 	lastRefresh, hasLastRefresh := extractLastRefreshTimestamp(metadata)
 

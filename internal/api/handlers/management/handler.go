@@ -16,6 +16,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/buildinfo"
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/config"
+	"github.com/router-for-me/CLIProxyAPI/v7/internal/opencodegoquota"
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/pluginhost"
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/pluginstore"
 	sdkAuth "github.com/router-for-me/CLIProxyAPI/v7/sdk/auth"
@@ -55,6 +56,7 @@ type Handler struct {
 	postAuthHook            coreauth.PostAuthHook
 	postAuthPersistHook     coreauth.PostAuthHook
 	pluginHost              *pluginhost.Host
+	opencodeGoQuotaClient   *opencodegoquota.Client
 	configReloadHook        func(context.Context, *config.Config)
 	pluginStoreRegistryURL  string
 	pluginStoreHTTPClient   pluginstore.HTTPDoer
@@ -73,13 +75,14 @@ func NewHandler(cfg *config.Config, configFilePath string, manager *coreauth.Man
 	envSecret = strings.TrimSpace(envSecret)
 
 	h := &Handler{
-		cfg:                 cfg,
-		configFilePath:      configFilePath,
-		failedAttempts:      make(map[string]*attemptInfo),
-		authManager:         manager,
-		tokenStore:          sdkAuth.GetTokenStore(),
-		allowRemoteOverride: envSecret != "",
-		envSecret:           envSecret,
+		cfg:                   cfg,
+		configFilePath:        configFilePath,
+		failedAttempts:        make(map[string]*attemptInfo),
+		authManager:           manager,
+		tokenStore:            sdkAuth.GetTokenStore(),
+		allowRemoteOverride:   envSecret != "",
+		envSecret:             envSecret,
+		opencodeGoQuotaClient: opencodegoquota.NewClient(nil),
 	}
 	h.startAttemptCleanup()
 	return h

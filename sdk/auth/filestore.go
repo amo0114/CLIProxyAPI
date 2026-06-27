@@ -424,6 +424,11 @@ func (s *FileTokenStore) labelFor(metadata map[string]any) string {
 	if v, ok := metadata["email"].(string); ok && v != "" {
 		return v
 	}
+	if provider, _ := metadata["type"].(string); strings.EqualFold(strings.TrimSpace(provider), "opencode_go") {
+		if v, ok := metadata["name"].(string); ok && strings.TrimSpace(v) != "" {
+			return strings.TrimSpace(v)
+		}
+	}
 	if project, ok := metadata["project_id"].(string); ok && project != "" {
 		return project
 	}

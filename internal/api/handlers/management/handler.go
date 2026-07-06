@@ -82,7 +82,7 @@ func NewHandler(cfg *config.Config, configFilePath string, manager *coreauth.Man
 		tokenStore:            sdkAuth.GetTokenStore(),
 		allowRemoteOverride:   envSecret != "",
 		envSecret:             envSecret,
-		opencodeGoQuotaClient: opencodegoquota.NewClient(nil),
+		opencodeGoQuotaClient: newOpenCodeGoQuotaClient(cfg),
 	}
 	h.startAttemptCleanup()
 	return h

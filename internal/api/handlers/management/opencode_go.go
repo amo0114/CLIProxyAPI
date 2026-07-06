@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -15,6 +16,7 @@ import (
 	"unicode"
 
 	"github.com/gin-gonic/gin"
+	"github.com/router-for-me/CLIProxyAPI/v7/internal/config"
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/opencodegoquota"
 	coreauth "github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/auth"
 	log "github.com/sirupsen/logrus"
@@ -81,9 +83,18 @@ func (h *Handler) openCodeGoQuotaClient() *opencodegoquota.Client {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if h.opencodeGoQuotaClient == nil {
-		h.opencodeGoQuotaClient = opencodegoquota.NewClient(nil)
+		h.opencodeGoQuotaClient = newOpenCodeGoQuotaClient(h.cfg)
 	}
 	return h.opencodeGoQuotaClient
+}
+
+func newOpenCodeGoQuotaClient(cfg *config.Config) *opencodegoquota.Client {
+	if cfg != nil {
+		if id := strings.TrimSpace(cfg.OpencodeGo.ServerFunctionID); id != "" {
+			return opencodegoquota.NewClientWithOptions(nil, id)
+		}
+	}
+	return opencodegoquota.NewClient(nil)
 }
 
 func (h *Handler) PatchOpenCodeGoCredential(c *gin.Context) {
@@ -167,6 +178,45 @@ func (h *Handler) PatchOpenCodeGoCredential(c *gin.Context) {
 		"status":     "ok",
 		"credential": h.publicOpenCodeGoCredential(auth),
 	})
+}
+
+func (h *Handler) DeleteOpenCodeGoCredential(c *gin.Context) {
+	if h == nil || h.authManager == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "core auth manager unavailable"})
+		return
+	}
+	id := strings.TrimSpace(c.Param("id"))
+	if id == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "id is required"})
+		return
+	}
+	auth := h.findOpenCodeGoAuth(id)
+	if auth == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "OpenCode Go credential not found"})
+		return
+	}
+	if coreauth.IsPluginVirtualAuth(auth) {
+		c.JSON(http.StatusConflict, gin.H{"error": errPluginVirtualAuth.Error()})
+		return
+	}
+	ctx := c.Request.Context()
+	targetPath := strings.TrimSpace(authAttribute(auth, "path"))
+	if targetPath == "" {
+		targetPath = strings.TrimSpace(auth.FileName)
+	}
+	if targetPath != "" {
+		if errRemove := os.Remove(targetPath); errRemove != nil && !os.IsNotExist(errRemove) {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("failed to delete auth file: %v", errRemove)})
+			return
+		}
+	}
+	if h.tokenStore != nil && targetPath != "" {
+		if errDelete := h.tokenStore.Delete(ctx, targetPath); errDelete != nil {
+			log.Errorf("opencode go delete: token store cleanup failed for %s: %v", auth.ID, errDelete)
+		}
+	}
+	h.authManager.Remove(ctx, auth.ID)
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
 func (h *Handler) TestOpenCodeGoCredential(c *gin.Context) {

@@ -733,6 +733,7 @@ func (s *Server) registerManagementRoutes() {
 		mgmt.POST("/auth-files/opencode-go/test", s.mgmt.TestOpenCodeGoCredential)
 		mgmt.PATCH("/auth-files/opencode-go/:id", s.mgmt.PatchOpenCodeGoCredential)
 		mgmt.PUT("/auth-files/opencode-go/:id", s.mgmt.PatchOpenCodeGoCredential)
+		mgmt.DELETE("/auth-files/opencode-go/:id", s.mgmt.DeleteOpenCodeGoCredential)
 		mgmt.DELETE("/auth-files", s.mgmt.DeleteAuthFile)
 		mgmt.PATCH("/auth-files/status", s.mgmt.PatchAuthFileStatus)
 		mgmt.PATCH("/auth-files/fields", s.mgmt.PatchAuthFileFields)

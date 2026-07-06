@@ -28,9 +28,10 @@ type HTTPDoer interface {
 }
 
 type Client struct {
-	doer  HTTPDoer
-	mu    sync.Mutex
-	cache map[string]cacheEntry
+	doer             HTTPDoer
+	mu               sync.Mutex
+	cache            map[string]cacheEntry
+	serverFunctionID string
 }
 
 type FetchOptions struct {
@@ -48,6 +49,9 @@ type cacheEntry struct {
 func NewClient(doer HTTPDoer) *Client {
 	if doer == nil {
 		doer = &http.Client{
+			Transport: &http.Transport{
+				Proxy: http.ProxyFromEnvironment,
+			},
 			CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
 				return http.ErrUseLastResponse
 			},
@@ -57,6 +61,26 @@ func NewClient(doer HTTPDoer) *Client {
 		doer:  doer,
 		cache: make(map[string]cacheEntry),
 	}
+}
+
+// NewClientWithOptions creates a client with an optional server function ID override.
+// When serverFunctionID is empty, the built-in default workspacesID is used.
+func NewClientWithOptions(doer HTTPDoer, serverFunctionID string) *Client {
+	c := NewClient(doer)
+	c.serverFunctionID = strings.TrimSpace(serverFunctionID)
+	return c
+}
+
+// ServerFunctionID returns the effective server function identifier, falling back
+// to the built-in default when no override is configured.
+func (c *Client) ServerFunctionID() string {
+	if c == nil {
+		return workspacesID
+	}
+	if id := strings.TrimSpace(c.serverFunctionID); id != "" {
+		return id
+	}
+	return workspacesID
 }
 
 func (c *Client) Fetch(ctx context.Context, cred Credential, opts FetchOptions) (*QuotaResult, error) {
@@ -154,7 +178,7 @@ func (c *Client) fetchServerFunction(ctx context.Context, method string, args []
 	var body io.Reader
 	if strings.EqualFold(method, http.MethodGet) {
 		values := url.Values{}
-		values.Set("id", workspacesID)
+		values.Set("id", c.ServerFunctionID())
 		if len(args) > 0 {
 			argsJSON, errMarshal := json.Marshal(args)
 			if errMarshal != nil {
@@ -180,7 +204,7 @@ func (c *Client) fetchServerFunction(ctx context.Context, method string, args []
 	req.Header.Set("Origin", "https://opencode.ai")
 	req.Header.Set("Referer", "https://opencode.ai")
 	req.Header.Set("User-Agent", "CLIProxyAPI-opencode-go-quota/1.0")
-	req.Header.Set("X-Server-Id", workspacesID)
+	req.Header.Set("X-Server-Id", c.ServerFunctionID())
 	req.Header.Set("X-Server-Instance", "server-fn:cliproxy-opencode-go")
 	if !strings.EqualFold(method, http.MethodGet) {
 		req.Header.Set("Content-Type", "application/json")

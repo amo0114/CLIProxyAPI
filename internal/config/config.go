@@ -124,6 +124,11 @@ type Config struct {
 	// Codex configures provider-wide Codex request behavior.
 	Codex CodexConfig `yaml:"codex" json:"codex"`
 
+	// OpencodeGo configures provider-wide OpenCode Go quota client behavior.
+	// ServerFunctionID, when set, overrides the default server function identifier
+	// used for workspace lookup requests. Empty value preserves the built-in default.
+	OpencodeGo OpencodeGoConfig `yaml:"opencode-go" json:"opencode-go"`
+
 	// CodexHeaderDefaults configures fallback headers for Codex OAuth model requests.
 	// These are used only when the client does not send its own headers.
 	CodexHeaderDefaults CodexHeaderDefaults `yaml:"codex-header-defaults" json:"codex-header-defaults"`
@@ -274,6 +279,13 @@ type CodexHeaderDefaults struct {
 // CodexConfig configures provider-wide Codex request behavior.
 type CodexConfig struct {
 	IdentityConfuse bool `yaml:"identity-confuse" json:"identity-confuse"`
+}
+
+// OpencodeGoConfig configures provider-wide OpenCode Go quota client behavior.
+type OpencodeGoConfig struct {
+	// ServerFunctionID overrides the default OpenCode server function identifier
+	// used for workspace lookup requests. Empty value preserves the built-in default.
+	ServerFunctionID string `yaml:"server-function-id" json:"server-function-id"`
 }
 
 // TLSConfig holds HTTPS server settings.

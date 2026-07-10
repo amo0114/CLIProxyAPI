@@ -7,7 +7,8 @@ on:
 
 env:
   APP_NAME: CLIProxyAPI
-  DOCKERHUB_REPO: eceasy/cli-proxy-api
+  # Forks set vars.DOCKERHUB_REPO (e.g. moyuan0115/cli-proxy-api); upstream default is eceasy.
+  DOCKERHUB_REPO: ${{ vars.DOCKERHUB_REPO || 'eceasy/cli-proxy-api' }}
 
 jobs:
   docker_amd64:
